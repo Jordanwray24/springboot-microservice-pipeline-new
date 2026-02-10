@@ -1,0 +1,52 @@
+- hosts: app
+  become: yes
+  vars:
+    container_name: springboot-app
+    app_port: 8081
+  tasks:
+    - name: Login to ECR
+      shell: |
+        aws ecr get-login-password --region {{ aws_region }} | \
+        docker login --username AWS --password-stdin {{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com
+      args:
+        executable: /bin/bash
+
+    - name: Pull image
+      shell: docker pull {{ ecr_uri }}:{{ image_tag }}
+
+    - name: Remove old container if exists
+      shell: docker rm -f {{ container_name }} || true
+
+    - name: Run container
+      shell: |
+        docker run -d --name {{ container_name }} \
+          --restart unless-stopped \
+          -p {{ app_port }}:8080 \
+          {{ ecr_uri }}:{{ image_tag }}
+      args:
+        executable: /bin/bash
+
+    - name: Wait for app port
+      wait_for:
+        port: "{{ app_port }}"
+        delay: 3
+        timeout: 90
+
+    - name: Verify app (retry)
+      shell: |
+        set -e
+        for i in {1..15}; do
+          curl -fsS http://localhost:8081/actuator/health && exit 0 || true
+          curl -fsS http://localhost:8081/ && exit 0 || true
+          sleep 2
+        done
+        echo "Verify failed after retries. Showing logs:" 
+        docker logs --tail 120 springboot-app || true
+        exit 1
+      args:
+        executable: /bin/bash
+      register: verify_out
+      changed_when: false
+
+    - debug:
+        var: verify_out.stdout
