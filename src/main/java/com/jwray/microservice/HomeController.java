@@ -1,4 +1,4 @@
-package jwray.microservice;
+package com.jwray.microservice;
 
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
